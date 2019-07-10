@@ -159,67 +159,27 @@ False: Does not need control and can just attach to any currently tasked device 
     </struct>
     <configurationkind kindtype="property"/>
   </structsequence>
-  <structsequence id="device_channels" mode="readonly" name="device_channels">
-    <description>Describes the daughtercards and channels found in the USRP</description>
-    <struct id="channels::channel" mode="readonly" name="channel">
-      <simple id="device_channels::ch_name" mode="readonly" name="ch_name" type="string">
-        <action type="external"/>
-      </simple>
-      <simple id="device_channels::tuner_type" mode="readonly" name="tuner_type" type="string">
-        <action type="external"/>
-      </simple>
-      <simple id="device_channels::chan_num" mode="writeonly" name="chan_num" type="short">
-        <description>This is the per tuner type channel number. This means that there could be a tuner 0 for an RX and a tuner 0 for a TX.</description>
-        <action type="external"/>
-      </simple>
-      <simple id="device_channels::antenna" mode="readonly" name="antenna" type="string">
-        <action type="external"/>
-      </simple>
-      <simplesequence id="device_channels::available_antennas" name="available_antennas" type="string">
-        <description>List of antennas available for this channel.</description>
-      </simplesequence>
-      <simple id="device_channels::bandwidth_current" mode="readonly" name="bandwidth_current" type="double">
-        <action type="external"/>
-      </simple>
-      <simple id="device_channels::bandwidth_min" mode="readwrite" name="bandwidth_min" type="double">
-        <action type="external"/>
-      </simple>
-      <simple id="device_channels::bandwidth_max" mode="readwrite" name="bandwidth_max" type="double">
-        <action type="external"/>
-      </simple>
-      <simple id="device_channels::rate_current" mode="readonly" name="rate_current" type="double">
-        <action type="external"/>
-      </simple>
-      <simple id="device_channels::rate_min" mode="readonly" name="rate_min" type="double">
-        <action type="external"/>
-      </simple>
-      <simple id="device_channels::rate_max" mode="readonly" name="rate_max" type="double">
-        <action type="external"/>
-      </simple>
-      <simple id="device_channels::freq_current" mode="readonly" name="freq_current" type="double">
-        <action type="external"/>
-      </simple>
-      <simple id="device_channels::freq_min" mode="readonly" name="freq_min" type="double">
-        <action type="external"/>
-      </simple>
-      <simple id="device_channels::freq_max" mode="readonly" name="freq_max" type="double">
-        <action type="external"/>
-      </simple>
-      <simple id="device_channels::gain_current" mode="readonly" name="gain_current" type="double">
-        <action type="external"/>
-      </simple>
-      <simple id="device_channels::gain_min" mode="readonly" name="gain_min" type="double">
-        <action type="external"/>
-      </simple>
-      <simple id="device_channels::gain_max" mode="readonly" name="gain_max" type="double">
-        <action type="external"/>
-      </simple>
-      <simple id="device_channels::clock_min" mode="readwrite" name="clock_min" type="double">
-        <action type="external"/>
-      </simple>
-      <simple id="device_channels::clock_max" mode="readwrite" name="clock_max" type="double">
-        <action type="external"/>
-      </simple>
+  <structsequence id="device_channels" mode="readwrite" name="device_channels">
+    <struct id="device_channels::channel" name="channel">
+      <simple id="device_channels::ch_name" name="ch_name" type="string"/>
+      <simple id="device_channels::tuner_type" name="tuner_type" type="string"/>
+      <simple id="device_channels::chan_num" name="chan_num" type="short"/>
+      <simple id="device_channels::antenna" name="antenna" type="string"/>
+      <simplesequence id="device_channels::available_antennas" name="available_antennas" type="string"/>
+      <simple id="device_channels::bandwidth_current" name="bandwidth_current" type="double"/>
+      <simple id="device_channels::bandwidth_min" name="bandwidth_min" type="double"/>
+      <simple id="device_channels::bandwidth_max" name="bandwidth_max" type="double"/>
+      <simple id="device_channels::rate_current" name="rate_current" type="double"/>
+      <simple id="device_channels::rate_min" name="rate_min" type="double"/>
+      <simple id="device_channels::rate_max" name="rate_max" type="double"/>
+      <simple id="device_channels::freq_current" name="freq_current" type="double"/>
+      <simple id="device_channels::freq_min" name="freq_min" type="double"/>
+      <simple id="device_channels::freq_max" name="freq_max" type="double"/>
+      <simple id="device_channels::gain_current" name="gain_current" type="double"/>
+      <simple id="device_channels::gain_min" name="gain_min" type="double"/>
+      <simple id="device_channels::gain_max" name="gain_max" type="double"/>
+      <simple id="device_channels::clock_min" name="clock_min" type="double"/>
+      <simple id="device_channels::clock_max" name="clock_max" type="double"/>
     </struct>
     <configurationkind kindtype="property"/>
   </structsequence>
@@ -229,7 +189,6 @@ False: Does not need control and can just attach to any currently tasked device 
     <action type="external"/>
   </simple>
   <simple id="device_addr" mode="readwrite" name="device_addr" type="string">
-    <description>Specify which LimeSDR to attach to. If none specified, attaches to first available in the list.</description>
     <kind kindtype="property"/>
     <action type="external"/>
   </simple>

@@ -5,9 +5,9 @@ if [ "$1" = "rpm" ]; then
     if [ -e LimeSDR_FEI.spec ]; then
         mydir=`dirname $0`
         tmpdir=`mktemp -d`
-        cp -r ${mydir} ${tmpdir}/LimeSDR_FEI-1.0.0
-        tar czf ${tmpdir}/LimeSDR_FEI-1.0.0.tar.gz --exclude=".svn" --exclude=".git" -C ${tmpdir} LimeSDR_FEI-1.0.0
-        rpmbuild -ta ${tmpdir}/LimeSDR_FEI-1.0.0.tar.gz
+        cp -r ${mydir} ${tmpdir}/LimeSDR_FEI-2.2
+        tar czf ${tmpdir}/LimeSDR_FEI-2.2.tar.gz --exclude=".svn" --exclude=".git" -C ${tmpdir} LimeSDR_FEI-2.2
+        rpmbuild -ta ${tmpdir}/LimeSDR_FEI-2.2.tar.gz
         rm -rf $tmpdir
     else
         echo "Missing RPM spec file in" `pwd`

@@ -1,5 +1,5 @@
-#ifndef LIMESDR_FEI_I_IMPL_H
-#define LIMESDR_FEI_I_IMPL_H
+#ifndef LIMESDR_I_IMPL_H
+#define LIMESDR_I_IMPL_H
 
 #include "LimeSDR_FEI_base.h"
 #include "lime/LimeSuite.h"
@@ -58,10 +58,10 @@ class LimeSDR_FEI_i : public LimeSDR_FEI_base
         void getChannelProperties(int num_channels, bool transmit);
         void getChannelStatus(int channel, bool transmit);
         void getAdvancedControlStatus(int channel, bool transmit);
-        void allocateLimeSDR(int channel, bool transmit, double freq, double sample_rate, int oversample_ratio, double bandwidth, double gain);
+        void allocateLimeSDR_FEI(int channel, bool transmit, double freq, double sample_rate, int oversample_ratio, double bandwidth, double gain);
         void Error(std::string err);
-        bulkio::OutFloatStream outputStream;
+        //bulkio::OutFloatStream outputStream;
 
 };
 
-#endif // LIMESDR_FEI_I_IMPL_H
+#endif // LIMESDR_I_IMPL_H

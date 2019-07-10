@@ -1,5 +1,5 @@
-#ifndef LIMESDR_FEI_BASE_IMPL_BASE_H
-#define LIMESDR_FEI_BASE_IMPL_BASE_H
+#ifndef LIMESDR_BASE_IMPL_BASE_H
+#define LIMESDR_BASE_IMPL_BASE_H
 
 #include <boost/thread.hpp>
 #include <frontend/frontend.h>
@@ -72,4 +72,4 @@ class LimeSDR_FEI_base : public frontend::FrontendTunerDevice<frontend_tuner_sta
     private:
         void construct();
 };
-#endif // LIMESDR_FEI_BASE_IMPL_BASE_H
+#endif // LIMESDR_BASE_IMPL_BASE_H

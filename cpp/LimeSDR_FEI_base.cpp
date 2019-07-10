@@ -63,20 +63,28 @@ void LimeSDR_FEI_base::construct()
     loadProperties();
 
     RFInfo_in = new frontend::InRFInfoPort("RFInfo_in", this);
+    RFInfo_in->setLogger(this->_baseLog->getChildLogger("RFInfo_in", "ports"));
     addPort("RFInfo_in", RFInfo_in);
     RFInfo_in_2 = new frontend::InRFInfoPort("RFInfo_in_2", this);
+    RFInfo_in_2->setLogger(this->_baseLog->getChildLogger("RFInfo_in_2", "ports"));
     addPort("RFInfo_in_2", RFInfo_in_2);
     DigitalTuner_in = new frontend::InDigitalTunerPort("DigitalTuner_in", this);
+    DigitalTuner_in->setLogger(this->_baseLog->getChildLogger("DigitalTuner_in", "ports"));
     addPort("DigitalTuner_in", DigitalTuner_in);
     dataFloatTX_in = new bulkio::InFloatPort("dataFloatTX_in");
+    dataFloatTX_in->setLogger(this->_baseLog->getChildLogger("dataFloatTX_in", "ports"));
     addPort("dataFloatTX_in", dataFloatTX_in);
     dataFloatTX_in_2 = new bulkio::InFloatPort("dataFloatTX_in_2");
+    dataFloatTX_in_2->setLogger(this->_baseLog->getChildLogger("dataFloatTX_in_2", "ports"));
     addPort("dataFloatTX_in_2", dataFloatTX_in_2);
     dataFloat_out = new bulkio::OutFloatPort("dataFloat_out");
+    dataFloat_out->setLogger(this->_baseLog->getChildLogger("dataFloat_out", "ports"));
     addPort("dataFloat_out", dataFloat_out);
     RFInfoTX_out = new frontend::OutRFInfoPort("RFInfoTX_out");
+    RFInfoTX_out->setLogger(this->_baseLog->getChildLogger("RFInfoTX_out", "ports"));
     addPort("RFInfoTX_out", RFInfoTX_out);
     RFInfoTX_out_2 = new frontend::OutRFInfoPort("RFInfoTX_out_2");
+    RFInfoTX_out_2->setLogger(this->_baseLog->getChildLogger("RFInfoTX_out_2", "ports"));
     addPort("RFInfoTX_out_2", RFInfoTX_out_2);
 
     this->addPropertyListener(connectionTable, this, &LimeSDR_FEI_base::connectionTableChanged);
@@ -151,7 +159,7 @@ void LimeSDR_FEI_base::loadProperties()
     addProperty(device_channels,
                 "device_channels",
                 "device_channels",
-                "readonly",
+                "readwrite",
                 "",
                 "external",
                 "property");

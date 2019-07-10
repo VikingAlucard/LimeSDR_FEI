@@ -9,6 +9,7 @@
 
 #include "LimeSDR_FEI.h"
 #include <limits>
+#include "lime/LimeSuite.h"
 
 typedef std::numeric_limits<double> dbl;
 
@@ -44,12 +45,18 @@ LimeSDR_FEI_i::LimeSDR_FEI_i(char *devMgr_ior, char *id, char *lbl, char *sftwrP
 {
 }
 
+/* See below
+LimeSDR_FEI_i::~LimeSDR_FEI_i()
+{
+}
+*/
+
 // TODO how do I properly call the destructor if something goes wrong?
 LimeSDR_FEI_i::~LimeSDR_FEI_i()
 {
 	// close device
     if (device != NULL) { LMS_Close(device); }
-    LOG_DEBUG(LimeSDR_FEI_i, "~LimeSDR_FEI_i() releasing LimeSDR FEI");
+    LOG_DEBUG(LimeSDR_FEI_i, "~LimeSDR_FEI_i() releasing LimeSDR_FEI FEI");
 }
 
 void LimeSDR_FEI_i::Error(std::string err) {
@@ -57,287 +64,462 @@ void LimeSDR_FEI_i::Error(std::string err) {
     throw FRONTEND::FrontendException(err.c_str());
 }
 
-
 void LimeSDR_FEI_i::constructor()
 {
+    /***********************************************************************************
+     This is the RH constructor. All properties are properly initialized before this function is called 
+
+     For a tuner device, the structure frontend_tuner_status needs to match the number
+     of tuners that this device controls and what kind of device it is.
+     The options for devices are: TX, RX, RX_DIGITIZER, CHANNELIZER, DDC, RC_DIGITIZER_CHANNELIZER
+     
+     For example, if this device has 5 physical
+     tuners, 3 RX_DIGITIZER and 2 CHANNELIZER, then the code in the construct function 
+     should look like this:
+
+     this->addChannels(3, "RX_DIGITIZER");
+     this->addChannels(2, "CHANNELIZER");
+     
+     The incoming request for tuning contains a string describing the requested tuner
+     type. The string for the request must match the string in the tuner status.
+    ***********************************************************************************/
 	// Find attached devices
-	int num_devices;
-	lms_info_str_t device_list[8];   // NOTE should be large enough to hold all detected devices
+		int num_devices;
+		lms_info_str_t device_list[8];   // NOTE should be large enough to hold all detected devices
 
-	// NULL can be passed to only get number of devices
-	if ((num_devices = LMS_GetDeviceList(device_list)) < 0) { Error(LMS_GetLastErrorMessage()); }
+		// NULL can be passed to only get number of devices
+		if ((num_devices = LMS_GetDeviceList(device_list)) < 0) { Error(LMS_GetLastErrorMessage()); }
 
-	if (num_devices < 1) {
-		std::cout << "No LimeSDR found" << std::endl;
-		// TODO how to exit properly? or just wait and have a way to try again later?
-		//this->stop();
+		if (num_devices < 1) {
+			std::cout << "No LimeSDR_FEI found" << std::endl;
+			// TODO how to exit properly? or just wait and have a way to try again later?
+			//this->stop();
 
-	} else {
-
-		std::cout << "Devices found " << std::endl;
-		for (int i = 0; i < num_devices; i++) {
-			std::cout << i << ": " << device_list[i] << std::endl;
-		}
-
-		// If there's a specific LimeSDR device_addr specified, figure out which one that is and attach to it
-		bool found = false;
-		if(!device_addr.empty()) {
-			for (int i = 0; i < num_devices; i++) {
-				if (std::string(device_list[i]).find(device_addr) != std::string::npos) {
-					found = true;
-					if (LMS_Open(&device, device_list[i], NULL)) { Error(LMS_GetLastErrorMessage()); }
-					std::cout << "#### Device " << i << " #####################" << std::endl;
-					break;
-				}
-			}
-			if (!found) {   // we didn't find that device
-				std::string err = "LimeSDR with device address '"+device_addr+"' not found.";
-				Error(err);
-			}
-
-		// Else just attach to first available LimeSDR
 		} else {
+
+			std::cout << "Devices found " << std::endl;
 			for (int i = 0; i < num_devices; i++) {
-				if (!(LMS_Open(&device, device_list[i], NULL))) {
-					std::cout << "#### Device " << i << " #####################" << std::endl;
-					break;
+				std::cout << i << ": " << device_list[i] << std::endl;
+			}
+
+			// If there's a specific LimeSDR_FEI device_addr specified, figure out which one that is and attach to it
+			bool found = false;
+			if(!device_addr.empty()) {
+				for (int i = 0; i < num_devices; i++) {
+					if (std::string(device_list[i]).find(device_addr) != std::string::npos) {
+						found = true;
+						if (LMS_Open(&device, device_list[i], NULL)) { Error(LMS_GetLastErrorMessage()); }
+						std::cout << "#### Device " << i << " #####################" << std::endl;
+						break;
+					}
+				}
+				if (!found) {   // we didn't find that device
+					std::string err = "LimeSDR_FEI with device address '"+device_addr+"' not found.";
+					Error(err);
+				}
+
+			// Else just attach to first available LimeSDR_FEI
+			} else {
+				for (int i = 0; i < num_devices; i++) {
+					if (!(LMS_Open(&device, device_list[i], NULL))) {
+						std::cout << "#### Device " << i << " #####################" << std::endl;
+						break;
+					}
 				}
 			}
+
+			//Initialize device with default configuration
+			//Do not use if you want to keep existing configuration
+			//Use LMS_LoadConfig(device, "/path/to/file.ini") to load config from INI
+			if (LMS_Init(device) != 0) { Error(LMS_GetLastErrorMessage()); }
+
+			// get number of RX channels
+			int num_rx_channels;
+			if ((num_rx_channels = LMS_GetNumChannels(device, LMS_CH_RX)) < 0) { Error(LMS_GetLastErrorMessage()); }
+			std::cout << "Number of RX channels: " << num_rx_channels << std::endl;
+
+			// TODO this kind of thing has to go somewhere for initial setup when adding channels...
+			//frontend_tuner_status[tuner_id].tuner_number = device_channels[tuner_id].chan_num;
+
+			for (int i = 0; i < num_rx_channels; i++) {
+				std::cout << "RX Channel " << i << std::endl;
+				// get ranges and current status of RX channels
+				// also fills initial frontend_tuner_status structs and device_channels
+				getChannelProperties(i, LMS_CH_RX);
+				// get advanced status properties of RX channels
+				getAdvancedControlStatus(i, LMS_CH_RX);
+				std::cout << std::endl;
+			}
+
+			// get number of TX channels
+			int num_tx_channels;
+			if ((num_tx_channels = LMS_GetNumChannels(device, LMS_CH_TX)) < 0) { Error(LMS_GetLastErrorMessage()); }
+			std::cout << "Number of TX channels: " << num_tx_channels << std::endl;
+
+			for (int i = 0; i < num_tx_channels; i++) {
+				std::cout << "TX Channel " << i << std::endl;
+				// get ranges and current status of TX channels
+				// also fills initial frontend_tuner_status structs and device_channels
+				getChannelProperties(i, LMS_CH_TX);
+				// get advanced status properties of TX channels
+				getAdvancedControlStatus(i, LMS_CH_TX);
+				std::cout << std::endl;
+			}
+
+
+			// TODO sort of unnecessary here since it's also included in getChannelProperties(). This is for when you only need status, not range.
+			//      but we use this function to update the frontend_tuner_status struct so do it anyway
+			// get current status of channels
+			std::cout << "#### Channel Status Update #####################" << std::endl;
+			for (int i = 0; i < num_rx_channels; i++) {
+				std::cout << "RX Channel " << i << std::endl;
+				getChannelStatus(i, LMS_CH_RX);
+				std::cout << std::endl;
+			}
+
+			for (int i = 0; i < num_tx_channels; i++) {
+				std::cout << "TX Channel " << i << std::endl;
+				getChannelStatus(i, LMS_CH_TX);
+				std::cout << std::endl;
+			}
+
+			std::cout << "#### frontend_tuner_status check #####################" << std::endl;
+			for(size_t tuner_id = 0; tuner_id < frontend_tuner_status.size(); tuner_id++) {
+				std::cout << "  Tuner Type: " << frontend_tuner_status[tuner_id].tuner_type << std::endl;
+				std::cout << "  Tuner Number: " << frontend_tuner_status[tuner_id].tuner_number << std::endl;
+				std::cout << "  Enabled: " << frontend_tuner_status[tuner_id].enabled << std::endl;
+				std::cout << "  Bandwidth: " << frontend_tuner_status[tuner_id].bandwidth << std::endl;
+				std::cout << "  Bandwidth Range: " << frontend_tuner_status[tuner_id].available_bandwidth << std::endl;
+				std::cout << "  Bandwidth Tolerance: " << frontend_tuner_status[tuner_id].bandwidth_tolerance << std::endl;
+				std::cout << "  Center Frequency: " << frontend_tuner_status[tuner_id].center_frequency << std::endl;
+				std::cout << "  Center Frequency Range: " << frontend_tuner_status[tuner_id].available_frequency << std::endl;
+				std::cout << "  Gain: " << frontend_tuner_status[tuner_id].gain << std::endl;
+				std::cout << "  Gain Range: " << frontend_tuner_status[tuner_id].available_gain << std::endl;
+				std::cout << "  Sample Rate: " << frontend_tuner_status[tuner_id].sample_rate << std::endl;
+				std::cout << "  Sample Rate Range: " << frontend_tuner_status[tuner_id].available_sample_rate << std::endl;
+				std::cout << "  Sample Rate Tolerance: " << frontend_tuner_status[tuner_id].sample_rate_tolerance << std::endl;
+				std::cout << "  Allocation ID CSV: " << frontend_tuner_status[tuner_id].allocation_id_csv << std::endl;
+				std::cout << "  AGC: " << frontend_tuner_status[tuner_id].agc << std::endl;
+				std::cout << "  Complex: " << frontend_tuner_status[tuner_id].complex << std::endl;
+				std::cout << "  Decimation: " << frontend_tuner_status[tuner_id].decimation << std::endl;
+				std::cout << "  Group ID: " << frontend_tuner_status[tuner_id].group_id << std::endl;
+				std::cout << "  Reference Source: " << frontend_tuner_status[tuner_id].reference_source << std::endl;
+				std::cout << "  RF Flow ID: " << frontend_tuner_status[tuner_id].rf_flow_id << std::endl;
+				std::cout << "  Scan Mode Enabled: " << frontend_tuner_status[tuner_id].scan_mode_enabled << std::endl;
+				std::cout << "  Supports Scan: " << frontend_tuner_status[tuner_id].supports_scan << std::endl;
+				std::cout << "  Valid: " << frontend_tuner_status[tuner_id].valid << std::endl;
+				std::cout << std::endl;
+			}
+
+			//################################################################################################
+			// test RX when allocation stuff isn't working. set's everything up for serviceFunction loop
+			/*
+			int channel = 0;
+			double freq = 800e6;
+			double sample_rate = 8e6;
+			double oversample_ratio = 8;
+			double bandwidth = 8e6;
+			double gain = 0.7;
+			bool transmit = false;  // RX_DIGITIZER, RX, etc receive default
+
+			std::cout << "Requesting... " << std::endl;
+			std::cout << "  Channel:          " << channel << std::endl;
+			std::cout << "  Transmit:         " << transmit << std::endl;
+			std::cout << "  RF Frequency:     " << freq << std::endl;
+			std::cout << "  LPF Bandwidth:    " << bandwidth << std::endl;
+			std::cout << "  Normalized Gain:  " << gain << std::endl;
+			std::cout << "  RF Sample Rate:   " << sample_rate << std::endl;
+			std::cout << "  Oversample Ratio: " << oversample_ratio << std::endl;
+
+			// make request
+			allocateLimeSDR_FEI(channel, transmit, freq, sample_rate, oversample_ratio, bandwidth, gain);
+
+			// check actual results
+			std::cout << "Got... " << std::endl;
+			std::cout << "  Channel:  " << channel << std::endl;
+			std::cout << "  Transmit: " << transmit << std::endl;
+			getChannelStatus(channel, transmit);
+
+			// initialize stream
+			// TODO make some of these things properties?
+			streamId.channel = channel;                      // channel number to stream from
+			streamId.fifoSize = 1024 * 1024;                 // fifo size in samples
+			streamId.throughputVsLatency = 1.0;              // optimize for max throughput
+			streamId.isTx = false;                           // RX channel
+			streamId.dataFmt = lms_stream_t::LMS_FMT_F32;    // 32-bit floats
+
+			if (LMS_SetupStream(device, &streamId) != 0) { Error(LMS_GetLastErrorMessage()); }
+
+			LMS_StartStream(&streamId);
+			// allow serviceFunction to start accepting data
+			channel_active = true;
+			*/
+			//################################################################################################
+
 		}
-
-		//Initialize device with default configuration
-		//Do not use if you want to keep existing configuration
-		//Use LMS_LoadConfig(device, "/path/to/file.ini") to load config from INI
-		if (LMS_Init(device) != 0) { Error(LMS_GetLastErrorMessage()); }
-
-		// get number of RX channels
-		int num_rx_channels;
-		if ((num_rx_channels = LMS_GetNumChannels(device, LMS_CH_RX)) < 0) { Error(LMS_GetLastErrorMessage()); }
-		std::cout << "Number of RX channels: " << num_rx_channels << std::endl;
-
-		// TODO this kind of thing has to go somewhere for initial setup when adding channels...
-		//frontend_tuner_status[tuner_id].tuner_number = device_channels[tuner_id].chan_num;
-
-		for (int i = 0; i < num_rx_channels; i++) {
-			std::cout << "RX Channel " << i << std::endl;
-			// get ranges and current status of RX channels
-			// also fills initial frontend_tuner_status structs and device_channels
-			getChannelProperties(i, LMS_CH_RX);
-			// get advanced status properties of RX channels
-			getAdvancedControlStatus(i, LMS_CH_RX);
-			std::cout << std::endl;
-		}
-
-		// get number of TX channels
-		int num_tx_channels;
-		if ((num_tx_channels = LMS_GetNumChannels(device, LMS_CH_TX)) < 0) { Error(LMS_GetLastErrorMessage()); }
-		std::cout << "Number of TX channels: " << num_tx_channels << std::endl;
-
-		for (int i = 0; i < num_tx_channels; i++) {
-			std::cout << "TX Channel " << i << std::endl;
-			// get ranges and current status of TX channels
-			// also fills initial frontend_tuner_status structs and device_channels
-			getChannelProperties(i, LMS_CH_TX);
-			// get advanced status properties of TX channels
-			getAdvancedControlStatus(i, LMS_CH_TX);
-			std::cout << std::endl;
-		}
-
-
-		// TODO sort of unnecessary here since it's also included in getChannelProperties(). This is for when you only need status, not range.
-		//      but we use this function to update the frontend_tuner_status struct so do it anyway
-		// get current status of channels
-		std::cout << "#### Channel Status Update #####################" << std::endl;
-		for (int i = 0; i < num_rx_channels; i++) {
-			std::cout << "RX Channel " << i << std::endl;
-			getChannelStatus(i, LMS_CH_RX);
-			std::cout << std::endl;
-		}
-
-		for (int i = 0; i < num_tx_channels; i++) {
-			std::cout << "TX Channel " << i << std::endl;
-			getChannelStatus(i, LMS_CH_TX);
-			std::cout << std::endl;
-		}
-
-		std::cout << "#### frontend_tuner_status check #####################" << std::endl;
-		for(size_t tuner_id = 0; tuner_id < frontend_tuner_status.size(); tuner_id++) {
-			std::cout << "  Tuner Type: " << frontend_tuner_status[tuner_id].tuner_type << std::endl;
-			std::cout << "  Tuner Number: " << frontend_tuner_status[tuner_id].tuner_number << std::endl;
-			std::cout << "  Enabled: " << frontend_tuner_status[tuner_id].enabled << std::endl;
-			std::cout << "  Bandwidth: " << frontend_tuner_status[tuner_id].bandwidth << std::endl;
-			std::cout << "  Bandwidth Range: " << frontend_tuner_status[tuner_id].available_bandwidth << std::endl;
-			std::cout << "  Bandwidth Tolerance: " << frontend_tuner_status[tuner_id].bandwidth_tolerance << std::endl;
-			std::cout << "  Center Frequency: " << frontend_tuner_status[tuner_id].center_frequency << std::endl;
-			std::cout << "  Center Frequency Range: " << frontend_tuner_status[tuner_id].available_frequency << std::endl;
-			std::cout << "  Gain: " << frontend_tuner_status[tuner_id].gain << std::endl;
-			std::cout << "  Gain Range: " << frontend_tuner_status[tuner_id].available_gain << std::endl;
-			std::cout << "  Sample Rate: " << frontend_tuner_status[tuner_id].sample_rate << std::endl;
-			std::cout << "  Sample Rate Range: " << frontend_tuner_status[tuner_id].available_sample_rate << std::endl;
-			std::cout << "  Sample Rate Tolerance: " << frontend_tuner_status[tuner_id].sample_rate_tolerance << std::endl;
-			std::cout << "  Allocation ID CSV: " << frontend_tuner_status[tuner_id].allocation_id_csv << std::endl;
-			std::cout << "  AGC: " << frontend_tuner_status[tuner_id].agc << std::endl;
-			std::cout << "  Complex: " << frontend_tuner_status[tuner_id].complex << std::endl;
-			std::cout << "  Decimation: " << frontend_tuner_status[tuner_id].decimation << std::endl;
-			std::cout << "  Group ID: " << frontend_tuner_status[tuner_id].group_id << std::endl;
-			std::cout << "  Reference Source: " << frontend_tuner_status[tuner_id].reference_source << std::endl;
-			std::cout << "  RF Flow ID: " << frontend_tuner_status[tuner_id].rf_flow_id << std::endl;
-			std::cout << "  Scan Mode Enabled: " << frontend_tuner_status[tuner_id].scan_mode_enabled << std::endl;
-			std::cout << "  Supports Scan: " << frontend_tuner_status[tuner_id].supports_scan << std::endl;
-			std::cout << "  Valid: " << frontend_tuner_status[tuner_id].valid << std::endl;
-			std::cout << std::endl;
-		}
-
-		//################################################################################################
-		// test RX when allocation stuff isn't working. set's everything up for serviceFunction loop
-		/*
-		int channel = 0;
-		double freq = 800e6;
-		double sample_rate = 8e6;
-		double oversample_ratio = 8;
-		double bandwidth = 8e6;
-		double gain = 0.7;
-		bool transmit = false;  // RX_DIGITIZER, RX, etc receive default
-
-		std::cout << "Requesting... " << std::endl;
-		std::cout << "  Channel:          " << channel << std::endl;
-		std::cout << "  Transmit:         " << transmit << std::endl;
-		std::cout << "  RF Frequency:     " << freq << std::endl;
-		std::cout << "  LPF Bandwidth:    " << bandwidth << std::endl;
-		std::cout << "  Normalized Gain:  " << gain << std::endl;
-		std::cout << "  RF Sample Rate:   " << sample_rate << std::endl;
-		std::cout << "  Oversample Ratio: " << oversample_ratio << std::endl;
-
-		// make request
-		allocateLimeSDR(channel, transmit, freq, sample_rate, oversample_ratio, bandwidth, gain);
-
-		// check actual results
-		std::cout << "Got... " << std::endl;
-		std::cout << "  Channel:  " << channel << std::endl;
-		std::cout << "  Transmit: " << transmit << std::endl;
-		getChannelStatus(channel, transmit);
-
-		// initialize stream
-		// TODO make some of these things properties?
-		streamId.channel = channel;                      // channel number to stream from
-		streamId.fifoSize = 1024 * 1024;                 // fifo size in samples
-		streamId.throughputVsLatency = 1.0;              // optimize for max throughput
-		streamId.isTx = false;                           // RX channel
-		streamId.dataFmt = lms_stream_t::LMS_FMT_F32;    // 32-bit floats
-
-		if (LMS_SetupStream(device, &streamId) != 0) { Error(LMS_GetLastErrorMessage()); }
-
-		LMS_StartStream(&streamId);
-		// allow serviceFunction to start accepting data
-		channel_active = true;
-		*/
-		//################################################################################################
-
-	}
 }
 
+/***********************************************************************************************
+
+    Basic functionality:
+
+        The service function is called by the serviceThread object (of type ProcessThread).
+        This call happens immediately after the previous call if the return value for
+        the previous call was NORMAL.
+        If the return value for the previous call was NOOP, then the serviceThread waits
+        an amount of time defined in the serviceThread's constructor.
+        
+    SRI:
+        To create a StreamSRI object, use the following code:
+                std::string stream_id = "testStream";
+                BULKIO::StreamSRI sri = bulkio::sri::create(stream_id);
+
+        To create a StreamSRI object based on tuner status structure index 'idx' and collector center frequency of 100:
+                std::string stream_id = "my_stream_id";
+                BULKIO::StreamSRI sri = this->create(stream_id, this->frontend_tuner_status[idx], 100);
+
+    Time:
+        To create a PrecisionUTCTime object, use the following code:
+                BULKIO::PrecisionUTCTime tstamp = bulkio::time::utils::now();
+
+        
+    Ports:
+
+        Data is passed to the serviceFunction through by reading from input streams
+        (BulkIO only). The input stream class is a port-specific class, so each port
+        implementing the BulkIO interface will have its own type-specific input stream.
+        UDP multicast (dataSDDS and dataVITA49) ports do not support streams.
+
+        The input stream from which to read can be rgetChannelPropertiesequested with the getCurrentStream()
+        method. The optional argument to getCurrentStream() is a floating point number that
+        specifies the time to wait in seconds. A zero value is non-blocking. A negative value
+        is blocking.  Constants have been defined for these values, bulkio::Const::BLOCKING and
+        bulkio::Const::NON_BLOCKING.
+
+        More advanced uses of input streams are possible; refer to the REDHAWK documentation
+        for more details.
+
+        Input streams return data blocks that automatically manage the memory for the data
+        and include the SRI that was in effect at the time the data was received. It is not
+        necessary to delete the block; it will be cleaned up when it goes out of scope.
+
+        To send data using a BulkIO interface, create an output stream and write the
+        data to it. When done with the output stream, the close() method sends and end-of-
+        stream flag and cleans up.
+
+        NOTE: If you have a BULKIO dataSDDS or dataVITA49  port, you must manually call 
+              "port->updateStats()" to update the port statistics when appropriate.
+
+        Example:
+            // This example assumes that the device has two ports:
+            //  An input (provides) port of type bulkio::InShortPort called dataShort_in
+            //  An output (uses) port of type bulkio::OutFloatPort called dataFloat_out
+            // The mapping between the port and the class is found
+            // in the device base class header file
+
+            bulkio::InShortStream inputStream = dataShort_in->getCurrentStream();
+            if (!inputStream) { // No streams are available
+                return NOOP;
+            }
+
+            // Get the output stream, creating it if it doesn't exist yet
+            bulkio::OutFloatStream outputStream = dataFloat_out->getStream(inputStream.streamID());
+            if (!outputStream) {
+                outputStream = dataFloat_out->createStream(inputStream.sri());
+            }
+
+            bulkio::ShortDataBlock block = inputStream.read();
+            if (!block) { // No data available
+                // Propagate end-of-stream
+                if (inputStream.eos()) {
+                   outputStream.close();
+                }
+                return NOOP;
+            }
+
+            if (block.sriChanged()) {
+                // Update output SRI
+                outputStream.sri(block.sri());
+            }
+
+            // Get read-only access to the input data
+            redhawk::shared_buffer<short> inputData = block.buffer();
+
+            // Acquire a new buffer to hold the output data
+            redhawk::buffer<float> outputData(inputData.size());
+
+            // Transform input data into output data
+            for (size_t index = 0; index < inputData.size(); ++index) {
+                outputData[index] = (float) inputData[index];
+            }
+
+            // Write to the output stream; outputData must not be modified after
+            // this method call
+            outputStream.write(outputData, block.getStartTime());
+
+            return NORMAL;
+
+        If working with complex data (i.e., the "mode" on the SRI is set to
+        true), the data block's complex() method will return true. Data blocks
+        provide a cxbuffer() method that returns a complex interpretation of the
+        buffer without making a copy:
+
+            if (block.complex()) {
+                redhawk::shared_buffer<std::complex<short> > inData = block.cxbuffer();
+                redhawk::buffer<std::complex<float> > outData(inData.size());
+                for (size_t index = 0; index < inData.size(); ++index) {
+                    outData[index] = inData[index];
+                }
+                outputStream.write(outData, block.getStartTime());
+            }
+
+        Interactions with non-BULKIO ports are left up to the device developer's discretion
+        
+    Messages:
+    
+        To receive a message, you need (1) an input port of type MessageEvent, (2) a message prototype described
+        as a structure property of kind message, (3) a callback to service the message, and (4) to register the callback
+        with the input port.
+        
+        Assuming a property of type message is declared called "my_msg", an input port called "msg_input" is declared of
+        type MessageEvent, create the following code:
+        
+        void LimeSDR_FEI_i::my_message_callback(const std::string& id, const my_msg_struct &msg){
+        }
+        
+        Register the message callback onto the input port with the following form:
+        this->msg_input->registerMessage("my_msg", this, &LimeSDR_FEI_i::my_message_callback);
+        
+        To send a message, you need to (1) create a message structure, (2) a message prototype described
+        as a structure property of kind message, and (3) send the message over the port.
+        
+        Assuming a property of type message is declared called "my_msg", an output port called "msg_output" is declared of
+        type MessageEvent, create the following code:
+        
+        ::my_msg_struct msg_out;
+        this->msg_output->sendMessage(msg_out);
+
+    Accessing the Device Manager and Domain Manager:
+    
+        Both the Device Manager hosting this Device and the Domain Manager hosting
+        the Device Manager are available to the Device.
+        
+        To access the Domain Manager:
+            CF::DomainManager_ptr dommgr = this->getDomainManager()->getRef();
+        To access the Device Manager:
+            CF::DeviceManager_ptr devmgr = this->getDeviceManager()->getRef();
+    
+    Properties:
+        
+        Properties are accessed directly as member variables. For example, if the
+        property name is "baudRate", it may be accessed within member functions as
+        "baudRate". Unnamed properties are given the property id as its name.
+        Property types are mapped to the nearest C++ type, (e.g. "string" becomes
+        "std::string"). All generated properties are declared in the base class
+        (LimeSDR_FEI_base).
+    
+        Simple sequence properties are mapped to "std::vector" of the simple type.
+        Struct properties, if used, are mapped to C++ structs defined in the
+        generated file "struct_props.h". Field names are taken from the name in
+        the properties file; if no name is given, a generated name of the form
+        "field_n" is used, where "n" is the ordinal number of the field.
+        
+        Example:
+            // This example makes use of the following Properties:
+            //  - A float value called scaleValue
+            //  - A boolean called scaleInput
+              
+            if (scaleInput) {
+                dataOut[i] = dataIn[i] * scaleValue;
+            } else {
+                dataOut[i] = dataIn[i];
+            }
+            
+        Callback methods can be associated with a property so that the methods are
+        called each time the property value changes.  This is done by calling 
+        addPropertyListener(<property>, this, &LimeSDR_FEI_i::<callback method>)
+        in the constructor.
+
+        The callback method receives two arguments, the old and new values, and
+        should return nothing (void). The arguments can be passed by value,
+        receiving a copy (preferred for primitive types), or by const reference
+        (preferred for strings, structs and vectors).
+
+        Example:
+            // This example makes use of the following Properties:
+            //  - A float value called scaleValue
+            //  - A struct property called status
+            
+        //Add to LimeSDR_FEI.cpp
+        LimeSDR_FEI_i::LimeSDR_FEI_i(const char *uuid, const char *label) :
+            LimeSDR_FEI_base(uuid, label)
+        {
+            addPropertyListener(scaleValue, this, &LimeSDR_FEI_i::scaleChanged);
+            addPropertyListener(status, this, &LimeSDR_FEI_i::statusChanged);
+        }
+
+        void LimeSDR_FEI_i::scaleChanged(float oldValue, float newValue)
+        {
+            RH_DEBUG(this->_baseLog, "scaleValue changed from" << oldValue << " to " << newValue);
+        }
+            
+        void LimeSDR_FEI_i::statusChanged(const status_struct& oldValue, const status_struct& newValue)
+        {
+            RH_DEBUG(this->_baseLog, "status changed");
+        }
+            
+        //Add to LimeSDR_FEI.h
+        void scaleChanged(float oldValue, float newValue);
+        void statusChanged(const status_struct& oldValue, const status_struct& newValue);
+
+    Logging:
+
+        The member _baseLog is a logger whose base name is the component (or device) instance name.
+        New logs should be created based on this logger name.
+
+        To create a new logger,
+            rh_logger::LoggerPtr my_logger = this->_baseLog->getChildLogger("foo");
+
+        Assuming component instance name abc_1, my_logger will then be created with the 
+        name "abc_1.user.foo".
+
+    Allocation:
+    
+        Allocation callbacks are available to customize the Device's response to 
+        allocation requests. For example, if the Device contains the allocation 
+        property "my_alloc" of type string, the allocation and deallocation
+        callbacks follow the pattern (with arbitrary function names
+        my_alloc_fn and my_dealloc_fn):
+        
+        bool LimeSDR_FEI_i::my_alloc_fn(const std::string &value)
+        {
+            // perform logic
+            return true; // successful allocation
+        }
+        void LimeSDR_FEI_i::my_dealloc_fn(const std::string &value)
+        {
+            // perform logic
+        }
+        
+        The allocation and deallocation functions are then registered with the Device
+        base class with the setAllocationImpl call. Note that the variable for the property is used rather
+        than its id:
+        
+        this->setAllocationImpl(my_alloc, this, &LimeSDR_FEI_i::my_alloc_fn, &LimeSDR_FEI_i::my_dealloc_fn);
+        
+        
+
+************************************************************************************************/
 int LimeSDR_FEI_i::serviceFunction()
 {
-	if (device && channel_active) {	// only do stuff if there's a device, serviceFunction gets called even if no device found in constructor
-		// receive samples (non-blocking?)
-		// TODO make some of this properties
-		int samplesRead;
-		const int buffersize = 10000;   // complex samples per buffer
-		float buffer[buffersize * 2];   // must hold I+Q values of each sample
-		lms_stream_meta_t metadata;
-		//metadata.timestamp            // either the rx timestamp or time that tx should start
-		//metadata.waitForTimestamp     // wait for specified timestamp before receiving or transmitting
-		int timeout_ms = 1000;
-		samplesRead = LMS_RecvStream(&streamId, buffer, buffersize, &metadata, timeout_ms);
-
-		//std::cout << "Number of Samples: " << samplesRead << std::endl;
-		//std::cout << "Data Timestamp: " << metadata.timestamp << std::endl;
-
-		// TODO do stuff with data
-		if (samplesRead==0) { // No data available
-			return NOOP;
-		}
-
-		// copy data from LimeSDR
-		std::vector<float> outputData;
-		outputData.resize(samplesRead);
-		for (size_t index = 0; index < samplesRead; ++index) {
-			outputData[index] = buffer[index];
-		}
-
-		// create SRI
-		std::string stream_id = "my_stream_id";
-		BULKIO::StreamSRI sri = this->create(stream_id, this->frontend_tuner_status[0], this->frontend_tuner_status[0].center_frequency);
-		// TODO have to set SRI as complex, create() doesn't seem to read the complex boolean in frontend_tuner_status
-		sri.mode = 1; // complex mode
-		/*
-        std::cout << "SRI streamID: " << sri.streamID << std::endl;
-		std::cout << "SRI mode:     " << sri.mode << std::endl;     // complex=1, scalar=0
-		std::cout << "SRI hversion: " << sri.hversion << std::endl; // version of Stream SRI header
-		std::cout << "SRI xstart:   " << sri.xstart << std::endl;   // start time of first sample relative to Epoch
-		std::cout << "SRI xdelta:   " << sri.xdelta << std::endl;   // interval between samples
-		std::cout << "SRI xunits:   " << sri.xunits << std::endl;   // units of xstart and xdelta, usually BULKIO::UNITS_TIME for samples
-		std::cout << "SRI ystart:   " << sri.ystart << std::endl;   // unused for sample data
-		std::cout << "SRI ydelta:   " << sri.ydelta << std::endl;   // unused for sample data
-		std::cout << "SRI yunits:   " << sri.yunits << std::endl;   // unused for sample data
-		std::cout << "SRI subsize:  " << sri.subsize << std::endl;  // = 0 for sample data
-		 */
-		// TODO when do I update SRI?
-		bool sriChanged = false;
-
-		// If there is no output stream open, create one
-		if (!outputStream) {
-			outputStream = dataFloat_out->createStream(sri);
-		} else if (sriChanged) {			// Update output SRI
-			outputStream.sri(sri);
-		}
-
-		// copy timestamp from LimeSDR into BulkIO type
-		// TODO LimeSDR timestamp is just tick mark based on start time... not sure what units are or how to map to UTC
-		BULKIO::PrecisionUTCTime tstamp;
-		tstamp.tcmode = 1; // deprecated, default value
-		tstamp.tcstatus = BULKIO::TCS_INVALID; // indicates whether timestamp is valid and should be used
-		tstamp.toff = 0; // fractional sample offset
-		tstamp.twsec = metadata.timestamp; // whole seconds from Epoch
-		tstamp.tfsec = 0; // fractional seconds from Epoch
-
-		// Write to the output stream
-		outputStream.write(outputData, tstamp);
-
-		// Propagate end-of-stream
-		// TODO when would eos happen?
-		bool eos = false;
-		if (eos) {
-		  outputStream.close();
-		}
-
-		return NORMAL;
-
-		/*
-		// print stream stats
-		lms_stream_status_t status;
-		LMS_GetStreamStatus(&streamId, &status);
-
-		std::cout << "Stream Status " << std::endl;
-		std::cout << "  Active:      " << status.active << std::endl;
-		std::cout << "  Timestamp:   " << status.timestamp << std::endl;
-		std::cout << "  Underrun:    " << status.underrun << std::endl;
-		std::cout << "  Overrun:     " << status.overrun << std::endl;
-
-		// TODO some bug in these statements
-		//std::cout << "  Data Rate:   " << status.linkRate / 1e6 << " MB/s\n";                            // link data rate
-		//std::cout << "  Sample Rate: " << status.sampleRate / 1e6 << " MSamples/s\n";                    // link data rate
-		//std::cout << "  Fifo Filled: " << 100 * status.fifoFilledCount / status.fifoSize << "%" << std::endl; // percentage of FIFO filled
-		std::cout << "end " << std::endl;
-		*/
-	}
-
-	return NOOP;
+    RH_DEBUG(this->_baseLog, "serviceFunction() example log message");
+    
+    return NOOP;
 }
 
 /*
  * Non-autogenerated Redhawk functions #######################################################
- * I added these helper functions for the LimeSDR
+ * I added these helper functions for the LimeSDR_FEI
  * ###########################################################################################
  */
 
@@ -354,7 +536,7 @@ std::string testSigEnumToString(int code) {
 }
 
 // helper function for calibration?
-void configureLimeSDR() {}
+void configureLimeSDR_FEI() {}
 
 // helper function for getting properties that are static per device, regardless of channel type/number
 void getDeviceProperties() {}
@@ -442,7 +624,7 @@ void LimeSDR_FEI_i::getChannelProperties(int channel, bool transmit) {
 	availChan.antenna = antenna_list[n];
 	std::cout << "  Antenna current:  " << antenna_list[n] << std::endl;
 
-	// TODO dunno what the Redhawk 'clock' property is for but there's not equivalent in LimeSDR
+	// TODO dunno what the Redhawk 'clock' property is for but there's not equivalent in LimeSDR_FEI
 	availChan.clock_max = 0.0;
 	availChan.clock_min = 0.0;
 
@@ -533,7 +715,7 @@ void LimeSDR_FEI_i::getChannelStatus(int channel, bool transmit) {
 	for(size_t tuner_id = 0; tuner_id < frontend_tuner_status.size(); tuner_id++) {
 		if (frontend_tuner_status[tuner_id].tuner_number == channel) {
 			if (frontend_tuner_status[tuner_id].tuner_type == "RX_DIGITIZER" && not transmit) {
-				// update things that we actually get from LimeSDR "Get" functions
+				// update things that we actually get from LimeSDR_FEI "Get" functions
 				frontend_tuner_status[tuner_id].center_frequency = freq;
 				frontend_tuner_status[tuner_id].bandwidth = bandwidth;
 				frontend_tuner_status[tuner_id].gain = normal_gain;
@@ -544,7 +726,7 @@ void LimeSDR_FEI_i::getChannelStatus(int channel, bool transmit) {
 				num_updated++;
 
 			} else if (frontend_tuner_status[tuner_id].tuner_type == "TX" && transmit) {
-				// update things that we actually get from LimeSDR "Get" functions
+				// update things that we actually get from LimeSDR_FEI "Get" functions
 				frontend_tuner_status[tuner_id].center_frequency = freq;
 				frontend_tuner_status[tuner_id].bandwidth = bandwidth;
 				frontend_tuner_status[tuner_id].gain = normal_gain;
@@ -601,8 +783,8 @@ void LimeSDR_FEI_i::getAdvancedControlStatus(int channel, bool transmit) {
 	}
 }
 
-void LimeSDR_FEI_i::allocateLimeSDR(int channel, bool transmit, double freq, double sample_rate, int oversample_ratio, double bandwidth, double gain) {
-    LOG_DEBUG(LimeSDR_FEI_i, "--> allocateLimeSDR()");
+void LimeSDR_FEI_i::allocateLimeSDR_FEI(int channel, bool transmit, double freq, double sample_rate, int oversample_ratio, double bandwidth, double gain) {
+    LOG_DEBUG(LimeSDR_FEI_i, "--> allocateLimeSDR_FEI()");
     // TODO difference between EnableChannel and SetupStream/StartStream.....?
 	if (LMS_EnableChannel(device, transmit, channel, true) != 0) { Error(LMS_GetLastErrorMessage()); }
 	std::cout << "LMS_EnableChannel" << std::endl;
@@ -616,8 +798,9 @@ void LimeSDR_FEI_i::allocateLimeSDR(int channel, bool transmit, double freq, dou
 	// TODO what does LMS_SetGFIRLPF do?
 	std::cout << "LMS_SetGaindB" << std::endl;
 	if (LMS_Calibrate(device, transmit, channel, bandwidth, 0) != 0) { Error(LMS_GetLastErrorMessage()); } 	// perform automatic calibration (last arg are flags)
-    LOG_DEBUG(LimeSDR_FEI_i, "<-- allocateLimeSDR()");
+    LOG_DEBUG(LimeSDR_FEI_i, "<-- allocateLimeSDR_FEI()");
 }
+
 
 /*************************************************************
 Functions supporting tuning allocation
@@ -627,43 +810,40 @@ void LimeSDR_FEI_i::deviceEnable(frontend_tuner_status_struct_struct &fts, size_
     modify fts, which corresponds to this->frontend_tuner_status[tuner_id]
     Make sure to set the 'enabled' member of fts to indicate that tuner as enabled
     ************************************************************/
-    LOG_DEBUG(LimeSDR_FEI_i, "--> deviceEnable()");
+	LOG_DEBUG(LimeSDR_FEI_i, "--> deviceEnable()");
 
-	// tell device to start streaming data
-	// TODO if that's what this does, then why is the timestamp/waitForTimestamp fields not part of SetupStream for RX?
-	LMS_StartStream(&streamId);
+		// tell device to start streaming data
+		// TODO if that's what this does, then why is the timestamp/waitForTimestamp fields not part of SetupStream for RX?
+		LMS_StartStream(&streamId);
 
-	// update frontend_tuner_status struct
-	fts.enabled = true;
+		// update frontend_tuner_status struct
+		fts.enabled = true;
 
-	// allow serviceFunction to start accepting data
-	channel_active = true;
+		// allow serviceFunction to start accepting data
+		channel_active = true;
 
-    LOG_DEBUG(LimeSDR_FEI_i, "<-- deviceEnable()");
-    return;
+	    LOG_DEBUG(LimeSDR_FEI_i, "<-- deviceEnable()");
+	    return;
 }
-
 void LimeSDR_FEI_i::deviceDisable(frontend_tuner_status_struct_struct &fts, size_t tuner_id){
     /************************************************************
     modify fts, which corresponds to this->frontend_tuner_status[tuner_id]
     Make sure to reset the 'enabled' member of fts to indicate that tuner as disabled
     ************************************************************/
-    LOG_DEBUG(LimeSDR_FEI_i, "--> deviceDisable()");
+	LOG_DEBUG(LimeSDR_FEI_i, "--> deviceDisable()");
 
-	LMS_StopStream(&streamId);   // stream is stopped but can be started again with LMS_StartStream()
+		LMS_StopStream(&streamId);   // stream is stopped but can be started again with LMS_StartStream()
 
-	// update frontend_tuner_status struct
-	fts.enabled = false;
+		// update frontend_tuner_status struct
+		fts.enabled = false;
 
-	// stop serviceFunction from looking for data
-	channel_active = false;
+		// stop serviceFunction from looking for data
+		channel_active = false;
 
-    LOG_DEBUG(LimeSDR_FEI_i, "<-- deviceDisable()");
-    return;
+	    LOG_DEBUG(LimeSDR_FEI_i, "<-- deviceDisable()");
+	    return;
 }
 
-// TODO tuner_id is based on the way you added frontend_tuner_status structs, so if you did 2 RX then 2 TX, and you try to allocate a TX it will use tuner_id=2 and the corresponding fts for the first TX channel in the list
-// NOTE Redhawk core FrontendTunerDevice code checks the tolerance values in the allocation request against the frontend status that results from this function call. You don't actually have to check it yourself.
 bool LimeSDR_FEI_i::deviceSetTuning(const frontend::frontend_tuner_allocation_struct &request, frontend_tuner_status_struct_struct &fts, size_t tuner_id){
     /************************************************************
     modify fts, which corresponds to this->frontend_tuner_status[tuner_id]
@@ -704,7 +884,7 @@ bool LimeSDR_FEI_i::deviceSetTuning(const frontend::frontend_tuner_allocation_st
 	if (fts.tuner_type == "TX") { transmit = true; }
 
 	// make request
-	allocateLimeSDR(channel, transmit, request.center_frequency, request.sample_rate, oversample_ratio, request.bandwidth, gain);
+	allocateLimeSDR_FEI(channel, transmit, request.center_frequency, request.sample_rate, oversample_ratio, request.bandwidth, gain);
 
 	// check actual results
 	std::cout << "Got... " << std::endl;
@@ -731,18 +911,17 @@ bool LimeSDR_FEI_i::deviceSetTuning(const frontend::frontend_tuner_allocation_st
     LOG_DEBUG(LimeSDR_FEI_i, "<-- deviceSetTuning()");
     return true;
 }
-
 bool LimeSDR_FEI_i::deviceDeleteTuning(frontend_tuner_status_struct_struct &fts, size_t tuner_id) {
     /************************************************************
     modify fts, which corresponds to this->frontend_tuner_status[tuner_id]
     return true if the tune deletion succeeded, and false if it failed
     ************************************************************/
-    LOG_DEBUG(LimeSDR_FEI_i, "--> deviceDeleteTuning()");
+	LOG_DEBUG(LimeSDR_FEI_i, "--> deviceDeleteTuning()");
 
-	LMS_DestroyStream(device, &streamId);  // stream is deallocated and can no longer be used
+		LMS_DestroyStream(device, &streamId);  // stream is deallocated and can no longer be used
 
-    LOG_DEBUG(LimeSDR_FEI_i, "<-- deviceDeleteTuning()");
-    return true;
+	    LOG_DEBUG(LimeSDR_FEI_i, "<-- deviceDeleteTuning()");
+	    return true;
 }
 
 /*************************************************************
@@ -774,58 +953,72 @@ std::string LimeSDR_FEI_i::getTunerRfFlowId(const std::string& allocation_id) {
     return frontend_tuner_status[idx].rf_flow_id;
 }
 
-// TODO this->frontend_tuner_status vs. frontend_tuner_status ??
 void LimeSDR_FEI_i::setTunerCenterFrequency(const std::string& allocation_id, double freq) {
-	LOG_DEBUG(LimeSDR_FEI_i, "setTunerCenterFrequency");
-    long idx = getTunerMapping(allocation_id);
+    /*long idx = getTunerMapping(allocation_id);
     if (idx < 0) throw FRONTEND::FrontendException("Invalid allocation id");
     if(allocation_id != getControlAllocationId(idx))
         throw FRONTEND::FrontendException(("ID "+allocation_id+" does not have authorization to modify the tuner").c_str());
     if (freq<0) throw FRONTEND::BadParameterException("Center frequency cannot be less than 0");
+    // set hardware to new value. Raise an exception if it's not possible
+    this->frontend_tuner_status[idx].center_frequency = freq;
+    */
+	LOG_DEBUG(LimeSDR_FEI_i, "setTunerCenterFrequency");
+	    long idx = getTunerMapping(allocation_id);
+	    if (idx < 0) throw FRONTEND::FrontendException("Invalid allocation id");
+	    if(allocation_id != getControlAllocationId(idx))
+	        throw FRONTEND::FrontendException(("ID "+allocation_id+" does not have authorization to modify the tuner").c_str());
+	    if (freq<0) throw FRONTEND::BadParameterException("Center frequency cannot be less than 0");
 
-	double* actual_freq;
-    if (frontend_tuner_status[idx].tuner_type == "RX_DIGITIZER") {
-        //scoped_tuner_lock tuner_lock(usrp_tuners[idx].lock);
-    	//TODO do anything before changing freq? stop something, lock props, set SRI?
-    	if (LMS_SetLOFrequency(device, LMS_CH_RX, frontend_tuner_status[idx].tuner_number, freq) != 0) { Error(LMS_GetLastErrorMessage()); }
-    	if (LMS_GetLOFrequency(device, LMS_CH_RX, frontend_tuner_status[idx].tuner_number, actual_freq) != 0) { Error(LMS_GetLastErrorMessage()); }
+		double* actual_freq;
+	    if (frontend_tuner_status[idx].tuner_type == "RX_DIGITIZER") {
+	        //scoped_tuner_lock tuner_lock(usrp_tuners[idx].lock);
+	    	//TODO do anything before changing freq? stop something, lock props, set SRI?
+	    	if (LMS_SetLOFrequency(device, LMS_CH_RX, frontend_tuner_status[idx].tuner_number, freq) != 0) { Error(LMS_GetLastErrorMessage()); }
+	    	if (LMS_GetLOFrequency(device, LMS_CH_RX, frontend_tuner_status[idx].tuner_number, actual_freq) != 0) { Error(LMS_GetLastErrorMessage()); }
 
-    } else if (frontend_tuner_status[idx].tuner_type == "TX") {
-    	if (LMS_SetLOFrequency(device, LMS_CH_TX, frontend_tuner_status[idx].tuner_number, freq) != 0) { Error(LMS_GetLastErrorMessage()); }
-		if (LMS_GetLOFrequency(device, LMS_CH_TX, frontend_tuner_status[idx].tuner_number, actual_freq) != 0) {	Error(LMS_GetLastErrorMessage()); }
+	    } else if (frontend_tuner_status[idx].tuner_type == "TX") {
+	    	if (LMS_SetLOFrequency(device, LMS_CH_TX, frontend_tuner_status[idx].tuner_number, freq) != 0) { Error(LMS_GetLastErrorMessage()); }
+			if (LMS_GetLOFrequency(device, LMS_CH_TX, frontend_tuner_status[idx].tuner_number, actual_freq) != 0) {	Error(LMS_GetLastErrorMessage()); }
 
-    } else { throw FRONTEND::FrontendException(("Unexpected tuner type found: "+frontend_tuner_status[idx].tuner_type).c_str()); }
-	this->frontend_tuner_status[idx].center_frequency = *actual_freq;
-	//exclusive_lock lock(prop_lock);
+	    } else { throw FRONTEND::FrontendException(("Unexpected tuner type found: "+frontend_tuner_status[idx].tuner_type).c_str()); }
+		this->frontend_tuner_status[idx].center_frequency = *actual_freq;
+		//exclusive_lock lock(prop_lock);
 }
 
 double LimeSDR_FEI_i::getTunerCenterFrequency(const std::string& allocation_id) {
-	LOG_DEBUG(LimeSDR_FEI_i, "getTunerCenterFrequency");
     long idx = getTunerMapping(allocation_id);
     if (idx < 0) throw FRONTEND::FrontendException("Invalid allocation id");
     return frontend_tuner_status[idx].center_frequency;
 }
 
 void LimeSDR_FEI_i::setTunerBandwidth(const std::string& allocation_id, double bw) {
-	LOG_DEBUG(LimeSDR_FEI_i, "setTunerBandwidth");
-    long idx = getTunerMapping(allocation_id);
+    /*long idx = getTunerMapping(allocation_id);
     if (idx < 0) throw FRONTEND::FrontendException("Invalid allocation id");
     if(allocation_id != getControlAllocationId(idx))
         throw FRONTEND::FrontendException(("ID "+allocation_id+" does not have authorization to modify the tuner").c_str());
     if (bw<0) throw FRONTEND::BadParameterException("Bandwidth cannot be less than 0");
-
     // set hardware to new value. Raise an exception if it's not possible
-	double* actual_bw;
-    if (frontend_tuner_status[idx].tuner_type == "RX_DIGITIZER") {
-        if (LMS_SetLPFBW(device, LMS_CH_RX, frontend_tuner_status[idx].tuner_number, bw) != 0) { Error(LMS_GetLastErrorMessage()); }
-		if (LMS_GetLPFBW(device, LMS_CH_RX, frontend_tuner_status[idx].tuner_number, actual_bw) != 0) {	Error(LMS_GetLastErrorMessage()); }
+    this->frontend_tuner_status[idx].bandwidth = bw;
+    */
+	LOG_DEBUG(LimeSDR_FEI_i, "setTunerBandwidth");
+	    long idx = getTunerMapping(allocation_id);
+	    if (idx < 0) throw FRONTEND::FrontendException("Invalid allocation id");
+	    if(allocation_id != getControlAllocationId(idx))
+	        throw FRONTEND::FrontendException(("ID "+allocation_id+" does not have authorization to modify the tuner").c_str());
+	    if (bw<0) throw FRONTEND::BadParameterException("Bandwidth cannot be less than 0");
 
-    } else if (frontend_tuner_status[idx].tuner_type == "TX") {
-        if (LMS_SetLPFBW(device, LMS_CH_TX, frontend_tuner_status[idx].tuner_number, bw) != 0) { Error(LMS_GetLastErrorMessage()); }
-		if (LMS_GetLPFBW(device, LMS_CH_TX, frontend_tuner_status[idx].tuner_number, actual_bw) != 0) {	Error(LMS_GetLastErrorMessage()); }
+	    // set hardware to new value. Raise an exception if it's not possible
+		double* actual_bw;
+	    if (frontend_tuner_status[idx].tuner_type == "RX_DIGITIZER") {
+	        if (LMS_SetLPFBW(device, LMS_CH_RX, frontend_tuner_status[idx].tuner_number, bw) != 0) { Error(LMS_GetLastErrorMessage()); }
+			if (LMS_GetLPFBW(device, LMS_CH_RX, frontend_tuner_status[idx].tuner_number, actual_bw) != 0) {	Error(LMS_GetLastErrorMessage()); }
 
-    } else { throw FRONTEND::FrontendException(("Unexpected tuner type found: "+frontend_tuner_status[idx].tuner_type).c_str()); }
-	this->frontend_tuner_status[idx].bandwidth = *actual_bw;
+	    } else if (frontend_tuner_status[idx].tuner_type == "TX") {
+	        if (LMS_SetLPFBW(device, LMS_CH_TX, frontend_tuner_status[idx].tuner_number, bw) != 0) { Error(LMS_GetLastErrorMessage()); }
+			if (LMS_GetLPFBW(device, LMS_CH_TX, frontend_tuner_status[idx].tuner_number, actual_bw) != 0) {	Error(LMS_GetLastErrorMessage()); }
+
+	    } else { throw FRONTEND::FrontendException(("Unexpected tuner type found: "+frontend_tuner_status[idx].tuner_type).c_str()); }
+		this->frontend_tuner_status[idx].bandwidth = *actual_bw;
 }
 
 //TODO should I worry about checking real hardware value here?
@@ -840,13 +1033,13 @@ double LimeSDR_FEI_i::getTunerBandwidth(const std::string& allocation_id) {
 void LimeSDR_FEI_i::setTunerAgcEnable(const std::string& allocation_id, bool enable)
 {
 	LOG_DEBUG(LimeSDR_FEI_i, "setTunerAgcEnable");
-    throw FRONTEND::NotSupportedException("LimeSDR does not support AGC, use setGainDB or setNormalizedGain");
+    throw FRONTEND::NotSupportedException("LimeSDR_FEI does not support AGC, use setGainDB or setNormalizedGain");
 }
 
 bool LimeSDR_FEI_i::getTunerAgcEnable(const std::string& allocation_id)
 {
 	LOG_DEBUG(LimeSDR_FEI_i, "getTunerAgcEnable");
-    throw FRONTEND::NotSupportedException("LimeSDR does not support AGC, use setGainDB or setNormalizedGain");
+    throw FRONTEND::NotSupportedException("LimeSDR_FEI does not support AGC, use setGainDB or setNormalizedGain");
 }
 
 //NOTE There are 2 gain functions, GainDB and NormalizedGain, not sure which is preferred...
@@ -965,3 +1158,4 @@ frontend::RFInfoPkt LimeSDR_FEI_i::get_rfinfo_pkt(const std::string& port_name)
 void LimeSDR_FEI_i::set_rfinfo_pkt(const std::string& port_name, const frontend::RFInfoPkt &pkt)
 {
 }
+
